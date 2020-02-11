@@ -9,6 +9,6 @@ typedef struct{
     uint8_t a;
 } TPixel;
 
-void rotate_mc_image(uint8_t **src, uint8_t **dst, unsigned long width, unsigned long height, float angle);
+void rotate_mc_image(uint8_t **src, uint8_t **dst, unsigned int width, unsigned int height, float angle);
 
 #endif //_IMAGEROTATION_H_

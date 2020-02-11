@@ -1,6 +1,6 @@
 ASM_C=nasm
 ASM_FLAGS=-f elf64 -F dwarf -g
-ASM_SRC=imageroatation.asm
+ASM_SRC=imagerotation.asm
 ASM_OUTPUT=pso.o
 C_C=gcc
 C_FLAGS=-Wall -pedantic -no-pie -g
