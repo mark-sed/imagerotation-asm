@@ -18,13 +18,11 @@ global rotate_mc_image          ;; Monochromatic image rotation function
 ;; Moves pixel from src to dst
 ;; @param
 ;;      1 - imm8 for vpextrd
-;;      2 - x
-;;      3 - y
-;;      4 - x xmm
-;;      5 - y xmm
-%macro move_pixel 5
-        vpextrd eax, %4, %1                     ;; Get 1st x
-        vpextrd r10, %5, %1                     ;; Get 1st y
+;;      2 - x xmm
+;;      3 - y xmm
+%macro move_pixel 3
+        vpextrd eax, %2, %1                     ;; Get 1st x
+        vpextrd r10, %3, %1                     ;; Get 1st y
         cmp eax, 0                              ;; Check boundries
         jl %%skip
         cmp eax, edx
@@ -35,8 +33,8 @@ global rotate_mc_image          ;; Monochromatic image rotation function
         jge %%skip
         mov r11, qword[rdi+rax*8]               ;; src[src_x]
         mov al, byte[r11+r10]                   ;; al = src[src_x][src_y]
-        mov r11, qword[rsi+%2*8]                ;; dst[x]
-        mov byte[r11+%3], al                    ;; dst[x][y] = src[src_x][src_y]
+        mov r11, qword[rsi+r9*8]                ;; dst[x]
+        mov byte[r11+r8], al                    ;; dst[x][y] = src[src_x][src_y]
 %%skip:
         inc r9
 %endmacro
@@ -118,7 +116,6 @@ rotate_mc_image:
         vsubps ymm6, ymm6, ymm7                 ;; (height/2 * cos(angle)) - (width/2 * sin(angle))
         vsubps ymm5, ymm3, ymm6                 ;; y0 = height/2 - height/2 * cos(angle) - width/2 * sin(angle)
 
-        vmovaps ymm6, [__CONST_1_8]             ;; Load for x loop starting numbers
         vxorps ymm7, ymm7                       ;; Set y loop values to start at 0
         vmovaps ymm15, [__CONST_8]              ;; Load loop increments
         vmovaps ymm14, [__CONST_1]
@@ -129,10 +126,11 @@ rotate_mc_image:
         cmp r8, rcx
         jae .for_y_end                          ;; y >= height
         xor r9, r9                              ;; x loop counter
+        vmovaps ymm6, [__CONST_1_8]             ;; Load for x loop starting numbers
 .for_x: 
         add r9, 8
         cmp r9, rdx
-        jae .for_x_end                          ;; x >= width
+        ja .for_x_end                          ;; x >= width
         ; Calculate source x and y coordinates
         vmulps ymm8, ymm1, ymm6                 ;; cos(angle) * x
         vmulps ymm9, ymm0, ymm7                 ;; sin(angle) * y
@@ -153,14 +151,16 @@ rotate_mc_image:
         vextracti128 xmm13, ymm9, 0x1
         
         sub r9, 8                               ;; Adjust x coordinate
-        move_pixel 0x0, r9, r8, xmm10, xmm12    ;; Move pixels from src to dst
-        move_pixel 0x1, r9, r8, xmm10, xmm12
-        move_pixel 0x2, r9, r8, xmm10, xmm12
-        move_pixel 0x3, r9, r8, xmm10, xmm12
-        move_pixel 0x0, r9, r8, xmm11, xmm13
-        move_pixel 0x1, r9, r8, xmm11, xmm13
-        move_pixel 0x2, r9, r8, xmm11, xmm13
-        move_pixel 0x3, r9, r8, xmm11, xmm13
+        move_pixel 0x0, xmm10, xmm12            ;; Move pixels from src to dst
+        move_pixel 0x1, xmm10, xmm12
+        move_pixel 0x2, xmm10, xmm12
+        move_pixel 0x3, xmm10, xmm12
+        move_pixel 0x0, xmm11, xmm13
+        move_pixel 0x1, xmm11, xmm13
+        move_pixel 0x2, xmm11, xmm13
+        move_pixel 0x3, xmm11, xmm13
+
+
 
         vaddps ymm6, ymm6, ymm15                ;; Increment x values
         jmp near .for_x 
