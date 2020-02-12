@@ -9,8 +9,8 @@
 #define DEG2RAD(deg) ((deg) * M_PI / 180.0)
 
 int main(int argc, char *argv[]){
-#define WIDTH 40
-#define HEIGHT 40
+#define WIDTH 128
+#define HEIGHT 128
     uint8_t **img;
     uint8_t **dimg;
     img = malloc(WIDTH * sizeof(uint8_t *));
@@ -21,13 +21,13 @@ int main(int argc, char *argv[]){
     }
 
 
-    for(int x = 0; x < WIDTH/2; x++){
+    for(int x = 0; x < WIDTH; x++){
         for(int y = 0; y < HEIGHT; y++){
-            img[x][y] = 1;
+            img[x][y] = 42;
         }
     }
 
-    rotate_mc_image(img, dimg, WIDTH, HEIGHT, DEG2RAD(90));
+    rotate_mc_image(img, dimg, WIDTH, HEIGHT, DEG2RAD(0));
 
     for(int x = 0; x < WIDTH; x++){
         for(int y = 0; y < HEIGHT; y++){
