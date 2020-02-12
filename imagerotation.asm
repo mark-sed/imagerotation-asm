@@ -39,12 +39,6 @@ global rotate_mc_image          ;; Monochromatic image rotation function
         inc r9
 %endmacro
 
-;; Constants
-
-;; Global uninitialized variables
-;section .bss
-;align 64
-
 ;; Global variables
 section .data
 align 64
@@ -160,11 +154,20 @@ rotate_mc_image:
         move_pixel 0x2, xmm11, xmm13
         move_pixel 0x3, xmm11, xmm13
 
-
-
         vaddps ymm6, ymm6, ymm15                ;; Increment x values
         jmp near .for_x 
 .for_x_end:
+        ;; Do rest in serial if needed
+        sub r9, 8                               ;; Bring x back to correct value
+.for_x_serial:
+        cmp r9, rdx
+        jae .for_x_serial_end                   ;; x >= width
+        
+        ;; Add serial version of the algorithm
+
+        inc r9
+        jmp short .for_x_serial
+.for_x_serial_end:
         vaddps ymm7, ymm7, ymm14                ;; Increment y values
         inc r8                                  ;; Increment y counter
         jmp near .for_y
