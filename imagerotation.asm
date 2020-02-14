@@ -62,10 +62,18 @@ section .text
 rotate_mc_image:
         push rbp
         mov rbp, rsp
-        sub rsp, 16                              ;; Make space for variables
+        sub rsp, 80                             ;; Make space for variables
 
-        %define width rbp-16
-        %define height rbp-12
+        %define y_src rbp-80
+        %define x_src rbp-72
+        %define y0 rbp-64
+        %define x0 rbp-56
+        %define y_sinx0 rbp-48
+        %define y_cosy0 rbp-40
+        %define y rbp-32
+        %define x rbp-24
+        %define width2 rbp-16
+        %define height2 rbp-12
         %define angle_sin rbp-8
         %define angle_cos rbp-4
 
@@ -75,15 +83,15 @@ rotate_mc_image:
         vpextrd [angle_sin], xmm0, 0x4          ;; Extract angle into stack                          
         mov eax, edx
         sar eax, 1                              ;; Divide width by 2
-        mov dword[width], eax                   ;; Store width to stack
+        mov dword[width2], eax                  ;; Store width to stack
         mov eax, ecx
         sar eax, 1
-        mov dword[height], eax                  ;; Store height to stack
+        mov dword[height2], eax                 ;; Store height to stack
 
         ;; Calculate sin and cos of angle using FPU (AVX does not have trigonometric functions)
-        finit                                   ;; Init FPU                                       
-        fild dword[width]
-        fild dword[height]
+        fninit                                  ;; Init FPU    
+        fild dword[width2]
+        fild dword[height2]
         fld dword[angle_sin]                    ;; Load angle twice for sin and cos
         fld dword[angle_sin]
         fsin                                    ;; Calculate sin of angle
@@ -91,14 +99,34 @@ rotate_mc_image:
         fcos                                    ;; Calculate cos of angle
         fstp dword[angle_cos]                   ;; Store cos
         
-        fstp dword[height]
-        fstp dword[width]
+        fst dword[height2]                      ;; Keep width and height
+        fxch st0, st1
+        fst dword[width2]                       
+
+        ;; Calculate x0 and y0
+        fld dword[angle_sin]
+        fmul st1                                ;; width/2 * sin
+        fld dword[angle_cos]
+        fmul st2                                ;; width/2 * cos
+        fld dword[angle_sin]
+        fmul st4                                ;; height/2 * sin
+        fld dword[angle_cos]
+        fmul st5                                ;; height/2 * cos
+        fld dword[width2]
+        fsub st3                                ;; width/2 - width/2*cos
+        fsub st2                                ;; width/2 - width/2*cos - height/2*sin
+        fld dword[height2]
+        fsub st2                                ;; height/2 - width/2*cos
+        fadd st5                                ;; height/2 - width/2*cos + width/2*sin
+        
+        fstp dword[y0]
+        fstp dword[x0]
 
         vbroadcastss ymm0, [angle_sin]          ;; sin(angle)
         vbroadcastss ymm1, [angle_cos]          ;; cos(angle)
 
-        vbroadcastss ymm2, [width]              ;; Load width/2
-        vbroadcastss ymm3, [height]             ;; and height/2
+        vbroadcastss ymm2, [width2]             ;; Load width/2
+        vbroadcastss ymm3, [height2]            ;; and height/2
 
         vmulps ymm4, ymm2, ymm1                 ;; width/2 * cos(angle)
         vmulps ymm5, ymm3, ymm0                 ;; height/2 * sin(angle)
@@ -114,7 +142,6 @@ rotate_mc_image:
         vmovaps ymm15, [__CONST_8]              ;; Load loop increments
         vmovaps ymm14, [__CONST_1]
 
-        finit
         xor r8, r8                              ;; y loop counter
 .for_y:
         cmp r8, rcx
@@ -124,7 +151,7 @@ rotate_mc_image:
 .for_x: 
         add r9, 8
         cmp r9, rdx
-        ja .for_x_end                          ;; x >= width
+        ja .for_x_end                           ;; x >= width
         ; Calculate source x and y coordinates
         vmulps ymm8, ymm1, ymm6                 ;; cos(angle) * x
         vmulps ymm9, ymm0, ymm7                 ;; sin(angle) * y
@@ -158,12 +185,60 @@ rotate_mc_image:
         jmp near .for_x 
 .for_x_end:
         ;; Do rest in serial if needed
+        fninit
         sub r9, 8                               ;; Bring x back to correct value
+        mov qword[y], r8
+
+        fld dword[angle_sin]                    ;; Load angles
+        fld dword[angle_cos]
+
+        ;; Precalculate y*cos and y*sin+x0
+        fild qword[y]
+        fmul st1
+        fld dword[y0]
+        fadd st1
+        fstp qword[y_cosy0]
+        
+        fild qword[y]
+        fmul st3
+        fld dword[x0]
+        fadd st1
+        fstp qword[y_sinx0]
 .for_x_serial:
         cmp r9, rdx
         jae .for_x_serial_end                   ;; x >= width
         
-        ;; Add serial version of the algorithm
+        fninit                                  ;; Incorrect values are loaded if there is not finit        
+        fld dword[angle_sin]                    ;; Load angles
+        fld dword[angle_cos]
+        mov qword[x], r9                        ;; Update x on stack
+        
+        fild qword[x]
+        fmul st1                                ;; x * cos
+        fild qword[x]                           
+        fmul st3                                ;; x * sin
+        fld qword[y_cosy0]
+        fsub st1                                ;; cos*y+y0 - x*sin
+        fld qword[y_sinx0]
+        fadd st3                                ;; sin*y*x0 + x*c
+        fistp qword[x_src]
+        mov rax, qword[x_src]                   ;; Extract x_src and y_src
+        fistp qword[y_src]
+        mov r10, qword[y_src]                   
+        
+        cmp eax, 0                              ;; Check boundries
+        jl .xsskip
+        cmp eax, edx
+        jge .xsskip
+        cmp r10, 0
+        jl .xsskip
+        cmp r10, rcx
+        jge .xsskip
+        mov r11, qword[rdi+rax*8]               ;; src[src_x]
+        mov al, byte[r11+r10]                   ;; al = src[src_x][src_y]
+        mov r11, qword[rsi+r9*8]                ;; dst[x]
+        mov byte[r11+r8], al                    ;; dst[x][y] = src[src_x][src_y]
+.xsskip:
 
         inc r9
         jmp short .for_x_serial
